@@ -14,6 +14,12 @@ import { SavedItemsView } from './components/SavedItemsView';
 import { ShopView } from './components/ShopView';
 import { WhatsAppButton } from './components/WhatsAppButton';
 import { SEED_PRODUCTS, SEED_REVIEWS } from './data/seedCatalog';
+import {
+  apiFetchCatalogAndReviews,
+  apiSubmitInquiry,
+  apiSubmitOrder,
+  apiSubmitReview,
+} from './services/safaApi';
 import type {
   CartItem,
   CheckoutFormData,
@@ -92,22 +98,12 @@ export default function App() {
 
   const fetchCatalogAndReviews = useCallback(async () => {
     try {
-      const [prodRes, revRes] = await Promise.all([
-        fetch('/api/products'),
-        fetch('/api/reviews'),
-      ]);
-      if (prodRes.ok) {
-        const data = (await prodRes.json()) as { products?: Product[] };
-        if (Array.isArray(data.products) && data.products.length > 0) {
-          setProducts(data.products);
-        }
+      const { products: nextProducts, reviews: nextReviews } =
+        await apiFetchCatalogAndReviews();
+      if (nextProducts.length > 0) {
+        setProducts(nextProducts);
       }
-      if (revRes.ok) {
-        const data = (await revRes.json()) as { reviews?: ReviewRecord[] };
-        if (Array.isArray(data.reviews)) {
-          setReviews(data.reviews);
-        }
-      }
+      setReviews(nextReviews);
     } catch {
       // Retain deterministic seed catalog if offline
     }
@@ -211,30 +207,22 @@ export default function App() {
   };
 
   const handleSubmitOrder = async (form: CheckoutFormData): Promise<OrderRecord> => {
-    const res = await fetch('/api/orders', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        customer: {
-          fullName: form.fullName,
-          phone: form.phone,
-          email: form.email,
-          address: form.address,
-          city: form.city,
-          postalCode: form.postalCode,
-          notes: form.notes,
-        },
-        paymentMethod: form.paymentMethod,
-        items: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
-      }),
+    const order = await apiSubmitOrder({
+      customer: {
+        fullName: form.fullName,
+        phone: form.phone,
+        email: form.email,
+        address: form.address,
+        city: form.city,
+        postalCode: form.postalCode,
+        notes: form.notes,
+      },
+      paymentMethod: form.paymentMethod,
+      items: cartItems.map((i) => ({ productId: i.productId, quantity: i.quantity })),
     });
-    const data = (await res.json()) as { order?: OrderRecord; error?: string };
-    if (!res.ok || !data.order) {
-      throw new Error(data.error ?? 'Order submission failed.');
-    }
     setCartItems([]);
     await fetchCatalogAndReviews();
-    return data.order;
+    return order;
   };
 
   const handleSubmitReview = async (payload: {
@@ -245,16 +233,8 @@ export default function App() {
     rating: number;
     comment: string;
   }) => {
-    const res = await fetch('/api/reviews', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = (await res.json()) as { review?: ReviewRecord; error?: string };
-    if (!res.ok || !data.review) {
-      throw new Error(data.error ?? 'Unable to save review.');
-    }
-    setReviews((prev) => [data.review!, ...prev]);
+    const review = await apiSubmitReview(payload);
+    setReviews((prev) => [review, ...prev]);
   };
 
   const handleSubmitInquiry = async (payload: {
@@ -264,15 +244,7 @@ export default function App() {
     subject: string;
     message: string;
   }) => {
-    const res = await fetch('/api/inquiries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = (await res.json()) as { error?: string };
-    if (!res.ok) {
-      throw new Error(data.error ?? 'Unable to send inquiry.');
-    }
+    await apiSubmitInquiry(payload);
   };
 
   const cartTotals = calculateCartTotals(cartItems);

@@ -1,0 +1,21 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# If you host the Express backend separately (e.g. Render, Railway, Cloud Run),
+# uncomment the redirects below and replace YOUR-BACKEND-URL with your API host:
+#
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://YOUR-BACKEND-URL/api/:splat"
+#   status = 200
+#   force = true
+#
+# [[redirects]]
+#   from = "/uploads/*"
+#   to = "https://YOUR-BACKEND-URL/uploads/:splat"
+#   status = 200
+#   force = true

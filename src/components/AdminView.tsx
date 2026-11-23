@@ -9,6 +9,16 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { PACKAGE_TIER_ORDER, SAFA_ASSETS } from '../data/seedCatalog';
+import {
+  apiAdminAuthenticate,
+  apiAdminAuthStatus,
+  apiAdminCreateProduct,
+  apiAdminDashboard,
+  apiAdminUpdateInquiryStatus,
+  apiAdminUpdateOrderStatus,
+  apiAdminUpdateProduct,
+  apiAdminUploadImage,
+} from '../services/safaApi';
 import type {
   AdminStats,
   CollectionCategory,
@@ -72,32 +82,20 @@ export function AdminView({ onCatalogUpdated }: AdminViewProps) {
   const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
-    fetch('/api/admin/auth-status')
-      .then((res) => res.json())
-      .then((data: { needsSetup: boolean }) => {
-        setNeedsSetup(data.needsSetup);
+    apiAdminAuthStatus()
+      .then((status) => {
+        setNeedsSetup(status.needsSetup);
       })
       .catch(() => setNeedsSetup(false));
   }, []);
 
   const loadDashboard = async (authToken: string) => {
     setDashError('');
-    const res = await fetch('/api/admin/dashboard', {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    if (res.status === 401) {
+    const data = await apiAdminDashboard(authToken);
+    if (data.unauthorized) {
       setToken(null);
       return;
     }
-    if (!res.ok) {
-      throw new Error('Failed to load dashboard data.');
-    }
-    const data = (await res.json()) as {
-      stats: AdminStats;
-      products: Product[];
-      orders: OrderRecord[];
-      inquiries: InquiryRecord[];
-    };
     setStats(data.stats);
     setProducts(data.products);
     setOrders(data.orders);
@@ -128,17 +126,8 @@ export function AdminView({ onCatalogUpdated }: AdminViewProps) {
 
     setAuthLoading(true);
     try {
-      const endpoint = needsSetup ? '/api/admin/bootstrap' : '/api/admin/login';
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-      const data = (await res.json()) as { token?: string; error?: string };
-      if (!res.ok || !data.token) {
-        throw new Error(data.error ?? 'Authentication failed.');
-      }
-      setToken(data.token);
+      const nextToken = await apiAdminAuthenticate(Boolean(needsSetup), password);
+      setToken(nextToken);
       setNeedsSetup(false);
       setPassword('');
       setConfirmPassword('');
@@ -164,19 +153,8 @@ export function AdminView({ onCatalogUpdated }: AdminViewProps) {
         reader.onerror = () => reject(new Error('Failed to read image file.'));
         reader.readAsDataURL(file);
       });
-      const res = await fetch('/api/admin/upload', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ dataUrl }),
-      });
-      const data = (await res.json()) as { imageUrl?: string; error?: string };
-      if (!res.ok || !data.imageUrl) {
-        throw new Error(data.error ?? 'Image upload failed.');
-      }
-      onUploaded(data.imageUrl);
+      const imageUrl = await apiAdminUploadImage(token, dataUrl);
+      onUploaded(imageUrl);
       setDashMessage('Image uploaded successfully.');
     } catch (err) {
       setDashError(err instanceof Error ? err.message : 'Image upload failed.');
@@ -199,21 +177,12 @@ export function AdminView({ onCatalogUpdated }: AdminViewProps) {
     setDashError('');
     setDashMessage('');
     try {
-      const res = await fetch(`/api/admin/products/${productId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          price: Number(editPrice),
-          stock: Number(editStock),
-          shortDescription: editShortDesc,
-          image: editImage,
-        }),
+      await apiAdminUpdateProduct(token, productId, {
+        price: Number(editPrice),
+        stock: Number(editStock),
+        shortDescription: editShortDesc,
+        image: editImage,
       });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? 'Failed to update product.');
       setEditingProductId(null);
       await loadDashboard(token);
       await onCatalogUpdated();
@@ -226,15 +195,7 @@ export function AdminView({ onCatalogUpdated }: AdminViewProps) {
   const toggleProductAvailability = async (product: Product) => {
     if (!token) return;
     try {
-      const res = await fetch(`/api/admin/products/${product.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ available: !product.available }),
-      });
-      if (!res.ok) throw new Error('Unable to toggle availability.');
+      await apiAdminUpdateProduct(token, product.id, { available: !product.available });
       await loadDashboard(token);
       await onCatalogUpdated();
     } catch (err) {
@@ -248,25 +209,16 @@ export function AdminView({ onCatalogUpdated }: AdminViewProps) {
     setDashError('');
     setDashMessage('');
     try {
-      const res = await fetch('/api/admin/products', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          name: newName,
-          category: newCategory,
-          packageVersion: newTier,
-          price: Number(newPrice),
-          stock: Number(newStock),
-          tasbihSummary: newTasbih,
-          shortDescription: newShortDesc,
-          image: newImage,
-        }),
+      await apiAdminCreateProduct(token, {
+        name: newName,
+        category: newCategory,
+        packageVersion: newTier,
+        price: Number(newPrice),
+        stock: Number(newStock),
+        tasbihSummary: newTasbih,
+        shortDescription: newShortDesc,
+        image: newImage,
       });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(data.error ?? 'Unable to add product.');
       setShowAddForm(false);
       setNewName('');
       setNewTasbih('');
@@ -283,15 +235,7 @@ export function AdminView({ onCatalogUpdated }: AdminViewProps) {
     if (!token) return;
     setDashError('');
     try {
-      const res = await fetch(`/api/admin/orders/${orderId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) throw new Error('Failed to update order status.');
+      await apiAdminUpdateOrderStatus(token, orderId, status);
       await loadDashboard(token);
       setDashMessage(`Order status updated to ${status}.`);
     } catch (err) {
@@ -302,16 +246,11 @@ export function AdminView({ onCatalogUpdated }: AdminViewProps) {
   const handleInquiryStatusToggle = async (inq: InquiryRecord) => {
     if (!token) return;
     const nextStatus = inq.status === 'New' ? 'Replied' : 'New';
-    const res = await fetch(`/api/admin/inquiries/${inq.id}`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ status: nextStatus }),
-    });
-    if (res.ok) {
+    try {
+      await apiAdminUpdateInquiryStatus(token, inq.id, nextStatus);
       await loadDashboard(token);
+    } catch (err) {
+      setDashError(err instanceof Error ? err.message : 'Failed to update inquiry.');
     }
   };
 
