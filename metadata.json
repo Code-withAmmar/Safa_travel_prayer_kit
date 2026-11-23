@@ -1,0 +1,6 @@
+{
+  "name": "SAFA — Travel Prayer Kits",
+  "description": "SAFA offers thoughtfully designed Men's Beige and Women's Mauve travel prayer kits across five signature tiers — Elite, Premium, Digital Plus, Digital, and Classic.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
