@@ -3,7 +3,7 @@
   publish = "dist"
 
 [build.environment]
-  NODE_VERSION = "20"
+  NODE_VERSION = "22"
 
 # If you host the Express backend separately (e.g. Render, Railway, Cloud Run),
 # uncomment the redirects below and replace YOUR-BACKEND-URL with your API host:
